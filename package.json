@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20230419.0",
-    "typescript": "^5.0.4",
+    "typescript": "^5.4.2",
     "wrangler": "^3.0.0",
     "prettier": "^3.2.5",
     "itty-router": "^4.0.27",
