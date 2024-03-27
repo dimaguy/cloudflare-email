@@ -129,7 +129,7 @@ class Email {
 	 */
 	protected static convertContact(contact: IContact): IMCContact {
 		if (typeof contact === 'string') {
-			return { address: contact, name: undefined };
+			return { email: contact, name: undefined };
 		}
 
 		return { email: contact.address, name: contact.name };
