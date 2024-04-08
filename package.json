@@ -12,6 +12,6 @@
     "wrangler": "^3.0.0",
     "prettier": "^3.2.5",
     "itty-router": "^4.0.27",
-    "zod-validation-error": "^3.0.0"
+    "zod-validation-error": "^3.1.0"
   }
 }
