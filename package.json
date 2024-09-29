@@ -8,10 +8,11 @@
   },
   "dependencies": {
     "@cloudflare/workers-types": "^4.20230419.0",
+    "itty-router": "^4.0.27",
+    "mimetext": "^3.0.24",
+    "prettier": "^3.2.5",
     "typescript": "^5.0.4",
     "wrangler": "^3.0.0",
-    "prettier": "^3.2.5",
-    "itty-router": "^4.0.27",
     "zod-validation-error": "^3.0.0"
   }
 }

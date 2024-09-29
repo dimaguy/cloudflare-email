@@ -9,7 +9,7 @@ const iContactSchema = z.union([
 ]);
 
 const iEmailSchema = z.object({
-	to: z.union([iContactSchema, z.array(iContactSchema)]),
+	to: z.string(),
 	replyTo: z.union([iContactSchema, z.array(iContactSchema)]).optional(),
 	cc: z.union([iContactSchema, z.array(iContactSchema)]).optional(),
 	bcc: z.union([iContactSchema, z.array(iContactSchema)]).optional(),

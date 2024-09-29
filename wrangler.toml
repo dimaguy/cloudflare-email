@@ -1,6 +1,11 @@
-name = "worker-email"
+name = "worker-email-production"
 main = "src/main.ts"
-compatibility_date = "2023-09-02"
-
+compatibility_date = "2024-09-23"
+send_email = [
+    {type = "send_email", name = "SEB"},
+]
+compatibility_flags = ["nodejs_compat"]
 [build]
 command = "npm install"
+[observability]
+enabled = true
