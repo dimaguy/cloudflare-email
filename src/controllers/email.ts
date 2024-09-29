@@ -1,126 +1,139 @@
 import { IContact, IEmail } from '../schema/email';
+import { EmailMessage } from "cloudflare:email";
+import { createMimeMessage, MailboxType, ContentOptions, MIMEMessage } from "mimetext";
 
-type IMCPersonalization = { to: IMCContact[], dkim_domain: string | undefined, dkim_selector: string | undefined, dkim_private_key: string | undefined};
-type IMCContact = { email: string; name: string | undefined };
-type IMCContent = { type: string; value: string };
+type IMCContact = { addr: string; name?: string; type?: MailboxType };
 
-interface IMCEmail {
-	personalizations: IMCPersonalization[];
-	from: IMCContact;
-	reply_to: IMCContact | undefined;
-	cc: IMCContact[] | undefined;
-	bcc: IMCContact[] | undefined;
-	subject: string;
-	content: IMCContent[];
-}
 
 class Email {
 	/**
-	 *
-	 * @param email
+	 * Sends an email via the Cloudflare Email service.
+	 * @param email The email to send, conforming to the IEmail interface.
+	 * @param env The environment variables, containing the SEB worker.
+	 * @returns A promise that resolves when the email is sent.
 	 */
-	static async send(email: IEmail, env: Env) {
-		// convert email to IMCEmail (MailChannels Email)
-		const mcEmail: IMCEmail = Email.convertEmail(email, env);
+	static async send(email: IEmail, env: Env): Promise<void> {
+		const msg: MIMEMessage = Email.convertEmail(email);
 
-		// send email through MailChannels
-		const resp = await fetch(
-			new Request('https://api.mailchannels.net/tx/v1/send', {
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-				},
-				body: JSON.stringify(mcEmail),
-			})
-		);
-
-		// check if email was sent successfully
-		if (resp.status > 299 || resp.status < 200) {
-			throw new Error(`Error sending email: ${resp.status} ${resp.statusText} ${await resp.text()} - ${JSON.stringify(mcEmail)}`);
+		let fromAddress: string;
+		if (typeof email.from === 'string') {
+			fromAddress = email.from;
+		} else {
+			fromAddress = email.from.address;
 		}
+
+		let toAddresses: string;
+		toAddresses = email.to;
+
+		var message = new EmailMessage(
+			fromAddress,
+			toAddresses,
+			msg.asRaw(),
+		)
+		try {
+			await env.SEB.send(message)
+		} catch (e) {
+			throw new Error(`Error sending email: ${e.message}`);
+		}
+
 	}
+
 
 	/**
 	 * Converts an IEmail to an IMCEmail
 	 * @param email
 	 * @protected
 	 */
-	protected static convertEmail(email: IEmail, env: Env): IMCEmail {
-		const personalizations: IMCPersonalization[] = [];
-
-		// Convert 'to' field
-		const toContacts: IMCContact[] = Email.convertContacts(email.to);
-		if (env.DKIM_DOMAIN && env.DKIM_SELECTOR && env.DKIM_PRIVATE_KEY) {
-			personalizations.push({ to: toContacts, dkim_domain: env.DKIM_DOMAIN, dkim_selector: env.DKIM_SELECTOR, dkim_private_key: env.DKIM_PRIVATE_KEY});
-		} else {
-			personalizations.push({to: toContacts});
-		}
-
-		let replyTo: IMCContact | undefined = undefined;
-		let bccContacts: IMCContact[] | undefined = undefined;
-		let ccContacts: IMCContact[] | undefined = undefined;
-
-		// Convert 'replyTo' field
-		if (email.replyTo) {
-			const replyToContacts: IMCContact[] = Email.convertContacts(email.replyTo);
-			replyTo = replyToContacts.length > 0 ? replyToContacts[0] : { email: '', name: undefined };
-		}
-
-		// Convert 'cc' field
-		if (email.cc) {
-			ccContacts = Email.convertContacts(email.cc);
-		}
-
-		// Convert 'bcc' field
-		if (email.bcc) {
-			bccContacts = Email.convertContacts(email.bcc);
+	protected static convertEmail(email: IEmail): MIMEMessage {
+		if (!email) {
+			throw new Error("Email is null or undefined");
 		}
 
 		const from: IMCContact = Email.convertContact(email.from);
+		if (!from) {
+			throw new Error("Email.from is null or undefined");
+		}
 
-		// Convert 'subject' field
+		const toContacts: IMCContact[] = Email.convertContacts(email.to, 'To');
+		if (!toContacts || toContacts.length === 0) {
+			throw new Error("Email.to is null, undefined, or empty");
+		}
+
 		const subject: string = email.subject;
+		if (!subject) {
+			throw new Error("Email.subject is null or undefined");
+		}
+
+		const msg = createMimeMessage();
+		msg.setSender(from);
+		msg.setTo(toContacts);
+		msg.setSubject(subject);
+
+		let Recipients: IMCContact[] = [];
+		Recipients = Recipients.concat(toContacts);
+
+
+		// Convert 'cc' field
+		let ccContacts: IMCContact[] = [];
+		if (email.cc) {
+			ccContacts = Email.convertContacts(email.cc, 'Cc');
+			if (ccContacts && ccContacts.length > 0) {
+				Recipients = Recipients.concat(ccContacts);
+			}
+		}
+
+		let bccContacts: IMCContact[] = [];
+		// Convert 'bcc' field
+		if (email.bcc) {
+			bccContacts = Email.convertContacts(email.bcc, 'Bcc');
+			if (bccContacts && bccContacts.length > 0) {
+				Recipients = Recipients.concat(bccContacts);
+			}
+		}
 
 		// Convert 'text' field
-		const textContent: IMCContent[] = [];
+
 		if (email.text) {
-			textContent.push({ type: 'text/plain', value: email.text });
+			const textContent: ContentOptions = { contentType: 'text/plain', data: email.text }
+			msg.addMessage(textContent);
 		}
 
 		// Convert 'html' field
-		const htmlContent: IMCContent[] = [];
+
 		if (email.html) {
-			htmlContent.push({ type: 'text/html', value: email.html });
+			const htmlContent: ContentOptions = { contentType: 'text/html', data: email.html }
+			msg.addMessage(htmlContent);
 		}
 
-		const content: IMCContent[] = [...textContent, ...htmlContent];
-
-		return {
-			personalizations,
-			from,
-			cc: ccContacts,
-			bcc: bccContacts,
-			reply_to: replyTo,
-			subject,
-			content,
-		};
+		return msg
 	}
-
 	/**
 	 * Converts an IContact or IContact[] to a Contact[]
 	 * @param contacts
+	 * @param type - An optional parameter of type MailboxType
 	 * @protected
 	 */
-	protected static convertContacts(contacts: IContact | IContact[]): IMCContact[] {
+	protected static convertContacts(contacts: IContact | IContact[], type?: MailboxType): IMCContact[] {
 		if (!contacts) {
 			return [];
 		}
 
 		const contactArray: IContact[] = Array.isArray(contacts) ? contacts : [contacts];
-		const convertedContacts: IMCContact[] = contactArray.map(Email.convertContact);
+
+		const convertedContacts: IMCContact[] = contactArray.map(contact => {
+			const convertedContact = Email.convertContact(contact);
+
+			// 如果 type 存在，附加到 convertedContact 中
+			if (type) {
+				convertedContact.type = type; // 假设 IMCContact 中有一个 type 属性
+			}
+
+			return convertedContact;
+		});
 
 		return convertedContacts;
 	}
+
 
 	/**
 	 * Converts an IContact to a Contact
@@ -128,11 +141,9 @@ class Email {
 	 * @protected
 	 */
 	protected static convertContact(contact: IContact): IMCContact {
-		if (typeof contact === 'string') {
-			return { address: contact, name: undefined };
-		}
-
-		return { email: contact.address, name: contact.name };
+		return typeof contact === 'string'
+			? { addr: contact }
+			: { addr: contact.address, name: contact.name };
 	}
 }
 
